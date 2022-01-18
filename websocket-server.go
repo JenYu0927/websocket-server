@@ -25,6 +25,11 @@ const (
 	DATABASE = "nfvd"
 )
 
+type CRUD struct {
+	conn string
+	sql  string
+}
+
 // respond request body after 1 to 5 seconds
 func lagEcho(c *gin.Context) {
 	upgrader := &websocket.Upgrader{
@@ -72,7 +77,7 @@ func echo(c *gin.Context) {
 	c.String(200, string(body)+"\n")
 }
 
-func insert(c *gin.Context) {
+func (op *CRUD) query(c *gin.Context) {
 
 	// connect to DB
 	conn := fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
@@ -89,34 +94,34 @@ func insert(c *gin.Context) {
 
 }
 
-func CreateTable(db *sql.DB) error {
+func (op *CRUD) CreateTable(db *sql.DB) error {
 	/// create and initial fType table ///
-	sql := `
+	op.sql = `
 		CREATE TABLE IF NOT EXISTS fType(
 		ftId INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
 		ftName VARCHAR(32)
 		);`
 
-	if _, err := db.Exec(sql); err != nil {
+	if _, err := db.Exec(op.sql); err != nil {
 		fmt.Println("create table fail:", err)
 		return err
 	}
 	fmt.Println("create table succeed!")
 
-	sql = `
+	op.sql = `
 	INSERT IGNORE INTO fType (ftId,ftName)
 	VALUES(1 , 'type1'),
 	(2 , 'type2'),
 	(3 , 'type3');
 	`
-	if _, err := db.Exec(sql); err != nil {
+	if _, err := db.Exec(op.sql); err != nil {
 		fmt.Println("insert table fail:", err)
 		return err
 	}
 	fmt.Println("inset fType table succeed!")
 
 	/// create and initial main fruits and reference to fType ///
-	sql = `
+	op.sql = `
 		CREATE TABLE IF NOT EXISTS fruits(
 		fId INT(4) PRIMARY KEY AUTO_INCREMENT NOT NULL,
 		fName VARCHAR(32),
@@ -126,13 +131,13 @@ func CreateTable(db *sql.DB) error {
 		FOREIGN KEY(fType) REFERENCES fType(ftId)
 		);`
 
-	if _, err := db.Exec(sql); err != nil {
+	if _, err := db.Exec(op.sql); err != nil {
 		fmt.Println("create table fail:", err)
 		return err
 	}
 	fmt.Println("create table succeed!")
 
-	sql = `INSERT IGNORE INTO fruits (fid,fName,fPrice,fNum,fType)
+	op.sql = `INSERT IGNORE INTO fruits (fid,fName,fPrice,fNum,fType)
 	VALUES(1,'apple',55,3,1),
 	(2,'orange',23,6,2),
 	(3,'banana',33,5,3),
@@ -143,7 +148,7 @@ func CreateTable(db *sql.DB) error {
 	(8,'berry',11,9,1),
 	(9,'coconut',32,4,3);`
 
-	if _, err := db.Exec(sql); err != nil {
+	if _, err := db.Exec(op.sql); err != nil {
 		fmt.Println("insert table fail:", err)
 		return err
 	}
@@ -154,8 +159,9 @@ func CreateTable(db *sql.DB) error {
 
 func main() {
 
-	conn := fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
-	db, err := sql.Open("mysql", conn)
+	dbOp := new(CRUD)
+	dbOp.conn = fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
+	db, err := sql.Open("mysql", dbOp.conn)
 	if err != nil {
 		fmt.Println("Open DB failed. Error msg:", err)
 		return
@@ -166,14 +172,14 @@ func main() {
 	}
 	defer db.Close()
 
-	CreateTable(db)
+	dbOp.CreateTable(db)
 
 	r := gin.Default()
 	r.Use(cors.Default())
 
 	r.GET("/longJob", lagEcho) //websocket
 	r.POST("/shortJob", echo)  //http
-	r.POST("/writeDB", insert)
+	r.POST("/readDB", (dbOp).query)
 
 	r.Run(":7777")
 }
